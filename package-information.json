@@ -1,0 +1,19 @@
+{
+    "urgap": "3.2.18",
+    "packages": [
+        {
+            "name": "plink",
+            "versions": ["2.00a2.3-01"],
+            "base_image": "registry.hub.docker.com/miguelpmachado/plink_2.0:",
+            "gh_url": "https://github.com/chrchang/plink-ng",
+            "separate_venv": true
+        },
+        {
+            "name": "filtertabular",
+            "versions": ["1.0.0"],
+            "base_image": "python:3.10",
+            "gh_url": "urgap/urgap.git",
+            "separate_venv": false
+        }
+    ]
+}
