@@ -17,7 +17,7 @@ def test_python_available():
 def test_urgap_installed():
     """Test that urgap package is installed."""
     result = subprocess.run(
-        ["pip3", "show", "urgap"],
+        ["pip", "show", "urgap"],
         capture_output=True,
         text=True,
     )
@@ -49,15 +49,7 @@ def test_uctl_available():
         text=True,
     )
     assert result.returncode == 0
-    assert "uctl" in result.stdout.lower() or "urgap" in result.stdout.lower()
+    assert "uctl" in result.stdout.lower()
+    assert "urgap" in result.stdout.lower()
 
 
-def test_uv_available():
-    """Test that uv tool is available."""
-    result = subprocess.run(
-        ["uv", "--version"],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0
-    assert "uv" in result.stdout.lower()

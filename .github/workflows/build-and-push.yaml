@@ -130,9 +130,6 @@ jobs:
           IMAGE_TAG="${{ env.IMAGE_PREFIX }}/${{ matrix.name }}:${{ matrix.version }}"
           CONTAINER_NAME="${{ matrix.name }}-test-$$"
 
-          # Start container (override entrypoint in case image has one)
-          docker run -d --entrypoint "" --name "$CONTAINER_NAME" "$IMAGE_TAG" sleep infinity
-
           # Copy tests into container
           docker cp ${{ matrix.name }}/tests "$CONTAINER_NAME":/home/nonroot/tests
 
