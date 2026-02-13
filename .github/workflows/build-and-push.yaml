@@ -1,0 +1,161 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches:
+      - main
+  #pull_request:
+  #  branches:
+  #    - main
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Package name to build (leave empty for all)'
+        required: false
+        default: ''
+      urgap_wheel_url:
+        description: 'URL to urgap wheel (for pre-release testing)'
+        required: false
+        default: ''
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/urgap
+
+jobs:
+  build-matrix:
+    name: Generate Build Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      has_packages: ${{ steps.set-matrix.outputs.has_packages }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate matrix
+        id: set-matrix
+        run: |
+          if [ -n "${{ github.event.inputs.package }}" ]; then
+            MATRIX=$(python helpers/parse_packages.py package-information.json "${{ github.event.inputs.package }}")
+          else
+            MATRIX=$(python helpers/parse_packages.py package-information.json)
+          fi
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+
+          # Check if matrix has packages
+          INCLUDE_COUNT=$(echo "$MATRIX" | python -c "import sys, json; print(len(json.load(sys.stdin).get('include', [])))")
+          if [ "$INCLUDE_COUNT" -gt 0 ]; then
+            echo "has_packages=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_packages=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-test-push:
+    name: Build ${{ matrix.name }}:${{ matrix.version }}
+    needs: build-matrix
+    if: needs.build-matrix.outputs.has_packages == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.build-matrix.outputs.matrix) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download urgap wheel from PyPI
+        id: download-wheel
+        run: |
+          mkdir -p ${{ matrix.name }}/wheel
+
+          if [ -n "${{ github.event.inputs.urgap_wheel_url }}" ]; then
+            # Use provided wheel URL
+            curl -L -o ${{ matrix.name }}/wheel/urgap.whl "${{ github.event.inputs.urgap_wheel_url }}"
+          else
+            # Download from PyPI
+            pip download urgap==${{ matrix.urgap_version }} --no-deps -d ${{ matrix.name }}/wheel/ || \
+            pip download urgap --no-deps -d ${{ matrix.name }}/wheel/
+          fi
+
+          WHEEL_FILE=$(ls ${{ matrix.name }}/wheel/*.whl | head -1)
+          WHEEL_NAME=$(basename "$WHEEL_FILE")
+          echo "wheel_name=$WHEEL_NAME" >> $GITHUB_OUTPUT
+
+      - name: Prepare Docker tags
+        id: tags
+        run: |
+          TAGS="${{ env.IMAGE_PREFIX }}/${{ matrix.name }}:${{ matrix.version }}"
+          TAGS="$TAGS,${{ env.IMAGE_PREFIX }}/${{ matrix.name }}:${{ matrix.version }}-urgap${{ matrix.urgap_version }}"
+
+          if [ "${{ matrix.is_latest }}" == "true" ]; then
+            TAGS="$TAGS,${{ env.IMAGE_PREFIX }}/${{ matrix.name }}:latest"
+          fi
+
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.name }}
+          file: ${{ matrix.name }}/Dockerfile
+          push: false
+          load: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            BASEIMAGE=${{ matrix.base_image }}
+            URGAP=wheel/${{ steps.download-wheel.outputs.wheel_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run tests
+        run: |
+          IMAGE_TAG="${{ env.IMAGE_PREFIX }}/${{ matrix.name }}:${{ matrix.version }}"
+          CONTAINER_NAME="${{ matrix.name }}-test-$$"
+
+          # Copy tests into container
+          docker cp ${{ matrix.name }}/tests "$CONTAINER_NAME":/home/nonroot/tests
+
+          # Run tests based on separate_venv setting
+          if [ "${{ matrix.separate_venv }}" == "true" ]; then
+            docker exec "$CONTAINER_NAME" /home/nonroot/venv/bin/pip install pytest
+            docker exec "$CONTAINER_NAME" /home/nonroot/venv/bin/pytest /home/nonroot/tests/
+          else
+            docker exec "$CONTAINER_NAME" pip3 install pytest
+            docker exec "$CONTAINER_NAME" pytest /home/nonroot/tests/
+          fi
+
+          # Cleanup
+          docker stop "$CONTAINER_NAME"
+          docker rm "$CONTAINER_NAME"
+
+      - name: Push Docker image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.name }}
+          file: ${{ matrix.name }}/Dockerfile
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            BASEIMAGE=${{ matrix.base_image }}
+            URGAP=wheel/${{ steps.download-wheel.outputs.wheel_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
