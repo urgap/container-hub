@@ -11,7 +11,7 @@
         {
             "name": "filtertabular",
             "versions": ["1.0.0"],
-            "base_image": "python:3.13",
+            "base_image": "python:3.13-slim-trixie",
             "gh_url": "urgap/urgap.git",
             "separate_venv": false
         }
