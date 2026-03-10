@@ -1,8 +1,5 @@
 name: Build and Push Docker Images
 on:
-  push:
-    branches:
-      - main
   pull_request:
     branches:
       - main
@@ -10,10 +7,6 @@ on:
     inputs:
       package:
         description: 'Package name to build (leave empty for all)'
-        required: false
-        default: ''
-      urgap_wheel_url:
-        description: 'URL to urgap wheel (for pre-release testing)'
         required: false
         default: ''
 env:
@@ -72,23 +65,6 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Download urgap wheel from PyPI
-        id: download-wheel
-        run: |
-          mkdir -p ${{ matrix.name }}/wheel
-
-          if [ -n "${{ github.event.inputs.urgap_wheel_url }}" ]; then
-            # Use provided wheel URL
-            curl -L -o ${{ matrix.name }}/wheel/urgap.whl "${{ github.event.inputs.urgap_wheel_url }}"
-          else
-            # Download from PyPI
-            pip download urgap==${{ matrix.urgap_version }} --no-deps -d ${{ matrix.name }}/wheel/ || \
-            pip download urgap --no-deps -d ${{ matrix.name }}/wheel/
-          fi
-
-          WHEEL_FILE=$(ls ${{ matrix.name }}/wheel/*.whl | head -1)
-          WHEEL_NAME=$(basename "$WHEEL_FILE")
-          echo "wheel_name=$WHEEL_NAME" >> $GITHUB_OUTPUT
       - name: Prepare Docker tags
         id: tags
         run: |
