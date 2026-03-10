@@ -137,7 +137,6 @@ jobs:
           docker stop "$CONTAINER_NAME"
           docker rm "$CONTAINER_NAME"
       - name: Push Docker image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.name }}
