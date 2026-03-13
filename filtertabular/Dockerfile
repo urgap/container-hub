@@ -2,15 +2,11 @@ ARG BASEIMAGE
 
 FROM ${BASEIMAGE}
 
-ARG URGAP
-
 RUN addgroup --system nonroot && \
     adduser --system \
       --ingroup nonroot \
       --home /home/nonroot \
       nonroot
-
-COPY ${URGAP} /home/nonroot
 
 ENV HOME=/home/nonroot
 ENV VENV_PATH=$HOME/venv
@@ -20,7 +16,7 @@ USER nonroot
 RUN python -m venv "$VENV_PATH" --system-site-packages
 
 RUN pip install uv
-RUN uv pip install /home/nonroot/${URGAP}["all"]
+RUN uv pip install urgap["all"]
 
 WORKDIR $HOME
 

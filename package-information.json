@@ -1,5 +1,5 @@
 {
-    "urgap": "3.2.18",
+    "urgap": "3.3.5",
     "packages": [
         {
             "name": "plink",
@@ -11,7 +11,7 @@
         {
             "name": "filtertabular",
             "versions": ["1.0.0"],
-            "base_image": "python:3.10",
+            "base_image": "python:3.13-slim-trixie",
             "gh_url": "urgap/urgap.git",
             "separate_venv": false
         }
