@@ -1,70 +1,104 @@
 name: Build and Push Docker Images
+
 on:
   pull_request:
+    branches:
+      - main
+  push:
     branches:
       - main
   workflow_dispatch:
     inputs:
       package:
-        description: 'Package name to build (leave empty for all)'
+        description: "Package name to build (leave empty for auto detection)"
         required: false
-        default: ''
+        default: ""
+
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/urgap
+
 jobs:
   build-matrix:
     name: Generate Build Matrix
     runs-on: ubuntu-latest
+
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       has_packages: ${{ steps.set-matrix.outputs.has_packages }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
+
+      - name: Detect changed packages
+        id: detect
+        run: |
+          CHANGED=$(python helpers/detect_changed_packages.py package-information.json)
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+
       - name: Generate matrix
         id: set-matrix
         run: |
+
           if [ -n "${{ github.event.inputs.package }}" ]; then
             MATRIX=$(python helpers/parse_packages.py package-information.json "${{ github.event.inputs.package }}")
+
+          elif [ -n "${{ steps.detect.outputs.changed }}" ]; then
+            MATRIX=$(python helpers/parse_packages.py package-information.json ${{ steps.detect.outputs.changed }})
+
           else
-            MATRIX=$(python helpers/parse_packages.py package-information.json)
+            MATRIX='{"include":[]}'
           fi
+
           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
-          # Check if matrix has packages
           INCLUDE_COUNT=$(echo "$MATRIX" | python -c "import sys, json; print(len(json.load(sys.stdin).get('include', [])))")
+
           if [ "$INCLUDE_COUNT" -gt 0 ]; then
             echo "has_packages=true" >> $GITHUB_OUTPUT
           else
             echo "has_packages=false" >> $GITHUB_OUTPUT
           fi
+
   build-test-push:
     name: Build ${{ matrix.name }}:${{ matrix.version }}
+
     needs: build-matrix
     if: needs.build-matrix.outputs.has_packages == 'true'
+
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       packages: write
+
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.build-matrix.outputs.matrix) }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
       - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Prepare Docker tags
         id: tags
         run: |
@@ -76,6 +110,7 @@ jobs:
           fi
 
           echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
       - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
@@ -86,21 +121,19 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
             BASEIMAGE=${{ matrix.base_image }}
-            URGAP=wheel/${{ steps.download-wheel.outputs.wheel_name }}
+            URGAP=wheel/${{ matrix.urgap_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
       - name: Run tests
         run: |
           IMAGE_TAG="${{ env.IMAGE_PREFIX }}/${{ matrix.name }}:${{ matrix.version }}"
           CONTAINER_NAME="${{ matrix.name }}-test-$$"
 
-          # Start container
           docker run -d --name "$CONTAINER_NAME" "$IMAGE_TAG"
 
-          # Copy tests into container
           docker cp ${{ matrix.name }}/tests "$CONTAINER_NAME":/home/nonroot/tests
 
-          # Run tests based on separate_venv setting
           if [ "${{ matrix.separate_venv }}" == "true" ]; then
             docker exec "$CONTAINER_NAME" /home/nonroot/venv/bin/pip install pytest
             docker exec "$CONTAINER_NAME" /home/nonroot/venv/bin/pytest /home/nonroot/tests/
@@ -109,18 +142,12 @@ jobs:
             docker exec "$CONTAINER_NAME" pytest /home/nonroot/tests/
           fi
 
-          # Cleanup
           docker stop "$CONTAINER_NAME"
           docker rm "$CONTAINER_NAME"
+
       - name: Push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: ${{ matrix.name }}
-          file: ${{ matrix.name }}/Dockerfile
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
-          build-args: |
-            BASEIMAGE=${{ matrix.base_image }}
-            URGAP=wheel/${{ steps.download-wheel.outputs.wheel_name }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        if: github.event_name == 'push'
+        run: |
+          for tag in $(echo "${{ steps.tags.outputs.tags }}" | tr ',' ' '); do
+            docker push $tag
+          done
