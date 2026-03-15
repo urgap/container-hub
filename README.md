@@ -9,26 +9,6 @@ This repository builds and publishes Docker images for Urgap packages to GitHub 
 - The Urgap framework with relevant nodes
 - Required dependencies and runtime environment
 
-## Supported Packages
-
-### Plink
-Bioinformatics tool for genomic data analysis with PlinkFreq nodes.
-
-- **Base image**: `miguelpmachado/plink_2.0` (multi-stage extraction)
-- **Available versions**: 2.00a2.3-01
-- **GHCR images**: `ghcr.io/urgap/plink:2.00a2.3-01`, `ghcr.io/urgap/plink:latest`
-- **Nodes**: PlinkFreq:latest
-- **Special features**: Multi-stage build extracts plink2 binary from vendor image
-
-### Filtertabular
-Data filtering and format conversion utilities.
-
-- **Base image**: `python:3.10`
-- **Available versions**: 1.0.0
-- **GHCR images**: `ghcr.io/urgap/filtertabular:1.0.0`, `ghcr.io/urgap/filtertabular:latest`
-- **Nodes**: FilterTabularToCSV, FilterTabularToParquet, FilterTabularToXlsx (versions: 1.0.0, latest)
-- **Special features**: Single-stage build with uv package manager
-
 ## Local Development
 
 ### Building Images Locally
