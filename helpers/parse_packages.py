@@ -6,13 +6,13 @@ import sys
 from pathlib import Path
 
 
-def parse_packages(json_path: str, package_filter: str | None = None) -> dict:
+def parse_packages(json_path: str, package_filters: list[str] | None = None) -> dict:
     """
     Parse package-information.json and return GitHub Actions matrix.
 
     Args:
         json_path: Path to package-information.json
-        package_filter: Optional package name to filter (for manual dispatch)
+        package_filters: Optional package names to filter
 
     Returns:
         Dictionary with 'include' key containing list of matrix entries
@@ -29,11 +29,13 @@ def parse_packages(json_path: str, package_filter: str | None = None) -> dict:
     matrix_include = []
     errors = []
 
+    filters = set(package_filters) if package_filters else None
+
     for package in packages:
         name = package["name"]
 
-        # Skip if filter specified and doesn't match
-        if package_filter and name != package_filter:
+        # Skip if filters specified and doesn't match
+        if filters and name not in filters:
             continue
 
         # Validation: check package directory exists
@@ -90,17 +92,17 @@ def parse_packages(json_path: str, package_filter: str | None = None) -> dict:
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: parse_packages.py <json_path> [package_filter]", file=sys.stderr)
+        print("Usage: parse_packages.py <json_path> [package_filters...]", file=sys.stderr)
         sys.exit(1)
 
     json_path = sys.argv[1]
-    package_filter = sys.argv[2] if len(sys.argv) > 2 else None
+    package_filters = sys.argv[2:] if len(sys.argv) > 2 else None
 
     if not Path(json_path).exists():
         print(f"Error: {json_path} not found", file=sys.stderr)
         sys.exit(1)
 
-    matrix = parse_packages(json_path, package_filter)
+    matrix = parse_packages(json_path, package_filters)
 
     # Output for GitHub Actions
     print(json.dumps(matrix))
